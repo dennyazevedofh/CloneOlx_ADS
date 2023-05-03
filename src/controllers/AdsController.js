@@ -91,4 +91,111 @@ module.exports = {
     const info = await newAd.save();
     res.json({ id: info._id });
   },
+  getList: async (req, res) => {
+    let { sort = 'asc', offset = 0, limit = 8, q, cat, state } = req.query;
+    let filters = {status: true};
+    let total = 0;
+    if(q) {
+      filters.title = {'$regex': q, '$options': 'i'};
+    }
+    if(cat) {
+      const c = await Category.findOne({slug: cat}).exec();
+      if(c) {
+        filters.category = c._id.toString();
+      }
+    }
+    if(state) {
+      const s = await State.findOne({name: state.toUpperCase()}).exec();
+      if(s) {
+        filters.state = s._id.toString();
+      }
+    }
+    const adsTotal = await Ad.find(filters).exec();
+    total = adsTotal.length;
+    const adsData = await Ad.find(filters)
+          .sort({dateCreated: (sort=='desc'?-1:1)})
+          .skip(parseInt(offset))
+          .limit(parseInt(limit))
+          .exec();
+    let ads = [];
+    for (let in adsData) {
+      let image;
+      let defaultImg = adsData[i].images.find(e => e.default);
+      if(defaultImg) {
+        image = `${process.env.BASE}/media/${defaultImg.url}`;
+      } else {
+        image = `${process.env.BASE}/media/default.jpg`;
+      }
+      ads.push({
+        id: adsData[i]._id,
+        title: adsData[i].title,
+        price: adsData[i].price,
+        priceNegotiable: adsData[i].priceNegotiable,
+        image
+      });
+    }
+    res.json({ ads, total });
+  },
+  getItem: async (req, res) => {
+    let { id, other = null } = req.query;
+    if(!id) {
+      res.json({ error: 'Sem produto'});
+      return;
+    }
+    if(!mongoose.Types.ObjectId.isValid(id)) {
+      res.json({ error: 'ID inválido' });
+      return;
+    }
+    const ad = await Ad.findById(id);
+    if(!ad) {
+      res.json({ error: 'Produto inexistente'});
+      return;
+    }
+    ad.views++;
+    await ad.save();
+    let images = [];
+    for(let i in ad.images) {
+      images.push(`${process.env.BASE}/media/${ad.images[i].url}`);
+    }
+    let category = await Category.findById(ad.category).exec();
+    let userInfo = await User.findById(ad.idUser).exec();
+    let stateInfo = await State.findById(ad.state).exec();
+    let others = [];
+    if(other) {
+      const otherData = await Ad.find({status: true, idUser: ad.idUser}).exec();
+      for(let i in otherData) {
+        if(otherData[i]._id.toString() != ad._id.toString()) {
+          let image =  `${process.env.BASE}/media/default.jpg`;
+          let defaultImg = otherData[i].images.find(e => e.default);
+          if(defaultImg) {
+            image = `${process.env.BASE}/media/${defaultImg.url}`;
+          }
+          others.push({
+            id: otherData[i]._id,
+            title: otherData[i].title,
+            price: otherData[i].price,
+            priceNegotiable: otherData[i].priceNegotiable,
+            image
+          });
+        }
+      }
+    }
+    res.json({
+      id: ad._id,
+      title: ad.title,
+      price: ad.price,
+      priceNegotiable: ad.priceNegotiable,
+      description: ad.description,
+      dateCreated: ad.dateCreated,
+      views: ad.views,
+      images,
+      category,
+      userInfo: {
+        name: userInfo.name,
+        email: userInfo.email
+      },
+      stateName: stateInfo.name,
+      others
+    });
+  }
 }
